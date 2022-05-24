@@ -154,13 +154,19 @@ function initDialogs() {
         mydialog("Confirm Bulk Add", title, function() {
           dialogBulk.dialog("close");
           dialog.dialog("close");
+          let barcodes = [];
           for (var i = 0; i < codeArr.length; i++) {
             if (isDuplicateBarcode(codeArr[i])) {
               console.log('DUPLICATE barcode=' + codeArr[i] + ' ; Skipping...');
               continue;
             }
-            addBarcode(codeArr[i], false);
+            if (!isValidBarcode(codeArr[i])) {
+              console.log('INVALID barcode=' + codeArr[i] + ' ; Skipping...');
+              continue;
+            }
+            barcodes.push(codeArr[i]);
           }
+          addBarcodes(barcodes);
         });
       },
       "Cancel" : function() {
@@ -493,6 +499,23 @@ function addCurrentBarcode() {
 //  show - boolean, indicates whether or not to display the barcode dialog after adding the barcode
 function addBarcode(barcode, show) {
   if (barcode == null || barcode == "") return;
+  addBarcodeRow(barcode);
+  processCodes(show);
+}
+
+function addBarcodes(barcodes) {
+  const chunkSize = 10;
+  for (let i = 0; i < barcodes.length; i += chunkSize) {
+    const chunk = barcodes.slice(i, i + chunkSize);
+    for (b of chunk) {
+      addBarcodeRow(b);
+    }
+    processCodesMultiple(chunk);
+  }
+}
+
+
+function addBarcodeRow(barcode, show) {
   var tr = getNewRow(true, barcode);
   tr.append($("<td class='location_code'/>"));
   tr.append($("<td class='call_number'/>"));
@@ -507,7 +530,6 @@ function addBarcode(barcode, show) {
   tr.append($("<td class='status_msg'/>"));
   tr.append($("<td class='timestamp'/>"));
   $("#restable tr.header").after(tr);
-  processCodes(show);
 }
 
 //Create new table row
@@ -619,10 +641,11 @@ function updateRowStat(tr) {
 }
 
 
-function getBarcodeFromUrl(url) {
-  var match = /.*item_barcode=([0-9\-]+)$/.exec(url);
-  return (match.length > 1) ? match[1] : "";
-}
+// Not sure why we need this
+//function getBarcodeFromUrl(url) {
+  //var match = /.*item_barcode\[\]=([0-9\-]+)$/.exec(url);
+  //return (match.length > 1) ? match[1] : "";
+//}
 
 function getArray(json, name) {
   if (json == null) return {};
@@ -745,6 +768,40 @@ function parseResponse(barcode, json) {
   return resdata;
 }
 
+function processCodesMultiple(barcodes) {
+  //Call the web service to get data for the barcodes
+  var url = 'redirect_items.js?';
+  for (let i=0; i<barcodes.length; i++) {
+    if (i != 0) url = url + '&';
+    url = url + 'item_barcode[]=' + barcodes[i];
+  }
+  console.log('URL = ' + url);
+
+  $.getJSON(url, function(data){
+    for (let rawdata of data) {
+      var barcode = rawdata["barcode"];
+      console.log('processing returned data for barcode = ' + barcode);
+      var tr = $("#restable tr[barcode="+barcode+"]");
+      if (tr.length != 1) {
+        console.error('Error: barcode (' + barcode + ') not found in table');
+        continue;
+      }
+      tr.removeClass("new").addClass("processing");
+      var data = parseResponse(barcode, rawdata);
+      var resbarcode = data["barcode"];
+      data["bibLinkData"] = rawdata["bibLinkData"];
+      data["holdingLinkData"] = rawdata["holdingLinkData"];
+      populateCodesForRow(tr, data);
+      setLcSortStat(tr);
+      setRowStatus(tr, tr.find("td.status").text(), null, false);
+    }
+
+  }).fail(function() {
+    setRowStatus(tr, STAT_FAIL, "Connection Error", false);
+  });
+
+}
+
 /*
  * Process new rows
  *   show - boolean - whether or not to display the add barcode dialog
@@ -764,18 +821,29 @@ function processCodes(show) {
   tr.removeClass("new").addClass("processing");
   var barcode = tr.attr("barcode");
 
-  //If barcoe is invalid, mark with a status of "FAIL"
+  //If barcode is invalid, mark with a status of "FAIL"
   if (!isValidBarcode(barcode)) {
     setRowStatus(tr, STAT_FAIL, "Invalid item barcode", show);
     return;
   }
 
   //Call the web service to get data for the barcode
-  var url = API_REDIRECT + "?apipath="+encodeURIComponent(API_SERVICE)+"items&item_barcode="+barcode;
+  var url = 'redirect_items.js?item_barcode[]='+barcode;
   $.getJSON(url, function(rawdata){
-    var data = parseResponse(getBarcodeFromUrl(this.url), rawdata);
+    var data = parseResponse(barcode, rawdata[0]);
     var resbarcode = data["barcode"];
     var tr = $("#restable tr[barcode="+resbarcode+"]");
+    data["bibLinkData"] = rawdata[0]["bibLinkData"];
+    data["holdingLinkData"] = rawdata[0]["holdingLinkData"];
+    populateCodesForRow(tr, data);
+    setLcSortStat(tr);
+    setRowStatus(tr, tr.find("td.status").text(), null, show);
+  }).fail(function() {
+    setRowStatus(tr, STAT_FAIL, "Connection Error", show);
+  });
+}
+
+function populateCodesForRow(tr, data) {
     for(key in data) {
       var val = data[key] == null ? "" : data[key];
       if (key == "bibLink" || key == "holdingLink") {
@@ -787,32 +855,21 @@ function processCodes(show) {
       }
     }
 
-    var url = API_REDIRECT + "?apipath=" + encodeURIComponent(data["bibLink"]);
-    $.getJSON(url, function(data){
-      if ((getValue(data, "suppress_from_publishing") == "true")) {
-        $("tr[bib_id=" + data["mms_id"] + "] td.bib_supp")
-          .text("X");
-        tr.addClass("bib_supp");
-      }
-      tr.addClass("bib_check");
-      updateRowStat(tr);
-    });
-    url = API_REDIRECT + "?apipath=" + encodeURIComponent(data["holdingLink"]);
-    $.getJSON(url, function(data){
-      if ((getValue(data, "suppress_from_publishing") == "true")) {
-        $("tr[holding_id=" + data["holding_id"] + "] td.hold_supp")
-          .text("X");
-        tr.addClass("hold_supp");
-      }
-      tr.addClass("hold_check");
-      updateRowStat(tr);
-    });
-    setLcSortStat(tr);
+    if ((getValue(data["bibLinkData"], "suppress_from_publishing") == "true")) {
+      $("tr[bib_id=" + data["bib_id"] + "] td.bib_supp")
+        .text("X");
+      tr.addClass("bib_supp");
+    }
+    tr.addClass("bib_check");
+    //updateRowStat(tr);
 
-    setRowStatus(tr, tr.find("td.status").text(), null, show);
-  }).fail(function() {
-    setRowStatus(tr, STAT_FAIL, "Connection Error", show);
-  });
+    if ((getValue(data["holdingLinkData"], "suppress_from_publishing") == "true")) {
+      $("tr[holding_id=" + data["holding_id"] + "] td.hold_supp")
+        .text("X");
+      tr.addClass("hold_supp");
+    }
+    tr.addClass("hold_check");
+    updateRowStat(tr);
 }
 
 /*

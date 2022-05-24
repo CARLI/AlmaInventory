@@ -1,9 +1,18 @@
 'use strict';
 
+const API_SERVICE = "https://api-na.hosted.exlibrisgroup.com/almaws/v1/";
 const express = require('express');
 const fs = require('fs');
 const ini = require('ini');
+const https = require('https');
 const axios = require('axios');
+const almaApi = axios.create({
+  //60 sec timeout
+  timeout: 60000,
+
+  //keepAlive pools and reuses TCP connections, so it's faster
+  httpsAgent: new https.Agent({ keepAlive: true }),
+});
 
 global.orgs = loadOrgs();
 
@@ -85,13 +94,88 @@ app.get('/org/:org/redirect.js*', async (req, res) => {
           'Accept': 'application/json',
         }
       }
-    )
+    );
     res.json(ret.data);
     
   } catch (error) {
     ts_log_error(req, error);
     handleError(res, error.message);
   }
+});
+
+app.get('/org/:org/redirect_items.js*', async (req, res) => {
+  ts_log_access(req);
+  var APIKEY = getApiKey(req.params.org);
+  //console.log('APIKEY = ' + APIKEY);
+
+  let qs = {
+    'apikey': APIKEY
+  }
+
+  let retData = [];
+  try {
+    for (let barcode of req.query.item_barcode) {
+
+      let ret = await almaApi.get(API_SERVICE+'items?item_barcode='+barcode,
+        {
+          params: qs,
+          headers: {
+            'Accept': 'application/json',
+          }
+        }
+      );
+      let data = ret.data;
+      data["barcode"] = barcode;
+  
+      if ("link" in data) {
+        let linkURL = JSON.stringify(data["bib_data"]["link"]);
+        linkURL = linkURL.replace(/^"/, '');
+        linkURL = linkURL.replace(/"$/, '');
+        try {
+          let ret = await almaApi.get(linkURL,
+            {
+              params: qs,
+              headers: {
+                'Accept': 'application/json',
+              }
+            }
+          )
+          let bibLinkData = ret.data;
+          data["bibLinkData"] = bibLinkData;
+        } catch (error) {
+          ts_log_error(req, "couldn't get link data; " + error);
+        }
+      }
+    
+      if ("holding_data" in data) {
+        let linkURL = JSON.stringify(data["holding_data"]["link"]);
+        linkURL = linkURL.replace(/^"/, '');
+        linkURL = linkURL.replace(/"$/, '');
+        try {
+          ret = await almaApi.get(linkURL,
+            {
+              params: qs,
+              headers: {
+                'Accept': 'application/json',
+              }
+            }
+          )
+          let holdingLinkData = ret.data;
+          data["holdingLinkData"] = holdingLinkData;
+        } catch (error) {
+          ts_log_error(req, "couldn't get holding_data data; " + error);
+        }
+      }
+      retData.push(data);
+
+    }
+
+  } catch (error) {
+    ts_log_error(req, error);
+    handleError(res, error.message);
+    return;
+  }
+  res.json(retData);
 });
 
 app.get('/org/:org/*', async (req, res) => {
