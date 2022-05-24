@@ -7,8 +7,8 @@ const ini = require('ini');
 const https = require('https');
 const axios = require('axios');
 const almaApi = axios.create({
-  //60 sec timeout
-  timeout: 60000,
+  //10 sec timeout
+  timeout: 10000,
 
   //keepAlive pools and reuses TCP connections, so it's faster
   httpsAgent: new https.Agent({ keepAlive: true }),
@@ -113,69 +113,74 @@ app.get('/org/:org/redirect_items.js*', async (req, res) => {
   }
 
   let retData = [];
-  try {
+    // console.log('received barcodes: ' + req.query.item_barcode);
     for (let barcode of req.query.item_barcode) {
-
-      let ret = await almaApi.get(API_SERVICE+'items?item_barcode='+barcode,
-        {
-          params: qs,
-          headers: {
-            'Accept': 'application/json',
+      console.log('processing barcode: ' + barcode);
+      let data = {};
+      try {
+        let ret = await almaApi.get(API_SERVICE+'items?item_barcode='+barcode,
+          {
+            params: qs,
+            headers: {
+              'Accept': 'application/json',
+            }
+          }
+        );
+        data = ret.data;
+        data["barcode"] = barcode;
+  
+        if ("link" in data) {
+          let linkURL = JSON.stringify(data["bib_data"]["link"]);
+          linkURL = linkURL.replace(/^"/, '');
+          linkURL = linkURL.replace(/"$/, '');
+          try {
+            let ret = await almaApi.get(linkURL,
+              {
+                params: qs,
+                headers: {
+                  'Accept': 'application/json',
+                }
+              }
+            )
+            let bibLinkData = ret.data;
+            data["bibLinkData"] = bibLinkData;
+          } catch (error) {
+            ts_log_error(req, "barcode " + barcode + " couldn't get link data; " + error);
           }
         }
-      );
-      let data = ret.data;
-      data["barcode"] = barcode;
-  
-      if ("link" in data) {
-        let linkURL = JSON.stringify(data["bib_data"]["link"]);
-        linkURL = linkURL.replace(/^"/, '');
-        linkURL = linkURL.replace(/"$/, '');
-        try {
-          let ret = await almaApi.get(linkURL,
-            {
-              params: qs,
-              headers: {
-                'Accept': 'application/json',
-              }
-            }
-          )
-          let bibLinkData = ret.data;
-          data["bibLinkData"] = bibLinkData;
-        } catch (error) {
-          ts_log_error(req, "couldn't get link data; " + error);
-        }
-      }
     
-      if ("holding_data" in data) {
-        let linkURL = JSON.stringify(data["holding_data"]["link"]);
-        linkURL = linkURL.replace(/^"/, '');
-        linkURL = linkURL.replace(/"$/, '');
-        try {
-          ret = await almaApi.get(linkURL,
-            {
-              params: qs,
-              headers: {
-                'Accept': 'application/json',
+        if ("holding_data" in data) {
+          let linkURL = JSON.stringify(data["holding_data"]["link"]);
+          linkURL = linkURL.replace(/^"/, '');
+          linkURL = linkURL.replace(/"$/, '');
+          try {
+            ret = await almaApi.get(linkURL,
+              {
+                params: qs,
+                headers: {
+                  'Accept': 'application/json',
+                }
               }
-            }
-          )
-          let holdingLinkData = ret.data;
-          data["holdingLinkData"] = holdingLinkData;
-        } catch (error) {
-          ts_log_error(req, "couldn't get holding_data data; " + error);
+            )
+            let holdingLinkData = ret.data;
+            data["holdingLinkData"] = holdingLinkData;
+          } catch (error) {
+            ts_log_error(req, "barcode " + barcode + " couldn't get holding_data data; " + error);
+          }
         }
+      } catch (error) {
+        ts_log_error(req, "barcode " + barcode + " couldn't retrieve data; " + error);
+        data = {
+          'barcode': barcode,
+          'exception': "barcode " + barcode + " couldn't retrieve data; " + error
+        }
+console.log("Adding EXCEPTION barcode " + barcode + " to return Data");
       }
+console.log("Adding barcode " + barcode + " to return Data");
       retData.push(data);
-
     }
 
-  } catch (error) {
-    ts_log_error(req, error);
-    handleError(res, error.message);
-    return;
-  }
-  res.json(retData);
+    res.json(retData);
 });
 
 app.get('/org/:org/*', async (req, res) => {

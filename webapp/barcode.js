@@ -507,6 +507,7 @@ function addBarcodes(barcodes) {
   const chunkSize = 10;
   for (let i = 0; i < barcodes.length; i += chunkSize) {
     const chunk = barcodes.slice(i, i + chunkSize);
+    //console.log('processing chunk:' + chunk);
     for (b of chunk) {
       addBarcodeRow(b);
     }
@@ -620,6 +621,19 @@ function setRowStatus(tr, status, status_msg, show) {
   if (show) barcodeDialog();
 }
 
+// slimmed-down version used by processCodesMultiple
+function setRowStatusOnly(tr, status, status_msg, show) {
+  tr.find("td.status").text(status);
+  tr.removeClass("processing");
+  tr.addClass(status);
+  if (status_msg != null) tr.find("td.status_msg").text(status_msg);
+  tr.addClass(status);
+  if ($("#lastbarcode").text() == tr.attr("barcode")) {
+    $("#laststatus").text(status).removeClass().addClass(status);
+  }
+}
+
+
 function updateRowStat(tr) {
   if (!(tr.hasClass("bib_check") && tr.hasClass("hold_check"))) {
     //wait for the status to be set on the other field
@@ -640,6 +654,27 @@ function updateRowStat(tr) {
   setRowStatus(tr, stat, statmsg, false);
 }
 
+
+// slimmed-down version used by processCodesMultiple
+function updateRowStatOnly(tr) {
+  if (!(tr.hasClass("bib_check") && tr.hasClass("hold_check"))) {
+    //wait for the status to be set on the other field
+    return;
+  }
+
+  var stat = tr.find("td.status").text();
+  var statmsg = tr.find("td.status_msg").text();
+  if (tr.hasClass("bib_supp")) {
+    statmsg += "Bib suppressed. ";
+    stat = (stat == "PASS") ? "PULL-SUPP" : "PULL-MULT";
+  } else if (tr.hasClass("hold_supp")) {
+    statmsg += "Holding suppressed. ";
+    stat = (stat == "PASS") ? "PULL-HSUPP" : "PULL-MULT";
+  } else {
+    return;
+  }
+  setRowStatusOnly(tr, stat, statmsg, false);
+}
 
 // Not sure why we need this
 //function getBarcodeFromUrl(url) {
@@ -775,15 +810,20 @@ function processCodesMultiple(barcodes) {
     if (i != 0) url = url + '&';
     url = url + 'item_barcode[]=' + barcodes[i];
   }
-  console.log('URL = ' + url);
+  // console.log('fetching URL = ' + url);
 
   $.getJSON(url, function(data){
     for (let rawdata of data) {
+      // console.log(JSON.stringify(rawdata));
       var barcode = rawdata["barcode"];
-      console.log('processing returned data for barcode = ' + barcode);
+      // console.log('processing returned data for barcode = ' + barcode);
       var tr = $("#restable tr[barcode="+barcode+"]");
       if (tr.length != 1) {
         console.error('Error: barcode (' + barcode + ') not found in table');
+        continue;
+      }
+      if ("exception" in rawdata) {
+        setRowStatusOnly(tr, STAT_FAIL, "Connection Error", false);
         continue;
       }
       tr.removeClass("new").addClass("processing");
@@ -792,12 +832,17 @@ function processCodesMultiple(barcodes) {
       data["bibLinkData"] = rawdata["bibLinkData"];
       data["holdingLinkData"] = rawdata["holdingLinkData"];
       populateCodesForRow(tr, data);
+      updateRowStatOnly(tr);
       setLcSortStat(tr);
-      setRowStatus(tr, tr.find("td.status").text(), null, false);
+      setRowStatusOnly(tr, tr.find("td.status").text(), null, false);
     }
 
   }).fail(function() {
-    setRowStatus(tr, STAT_FAIL, "Connection Error", false);
+    console.log('FAILED: fetching URL = ' + url);
+    for (b of barcodes) {
+      var tr = $("#restable tr[barcode="+b+"]");
+      setRowStatusOnly(tr, STAT_FAIL, "Connection Error", false);
+    }
   });
 
 }
@@ -833,9 +878,14 @@ function processCodes(show) {
     var data = parseResponse(barcode, rawdata[0]);
     var resbarcode = data["barcode"];
     var tr = $("#restable tr[barcode="+resbarcode+"]");
+    if ("exception" in rawdata[0]) {
+      setRowStatusOnly(tr, STAT_FAIL, "Connection Error", false);
+      return;
+    }
     data["bibLinkData"] = rawdata[0]["bibLinkData"];
     data["holdingLinkData"] = rawdata[0]["holdingLinkData"];
     populateCodesForRow(tr, data);
+    updateRowStat(tr);
     setLcSortStat(tr);
     setRowStatus(tr, tr.find("td.status").text(), null, show);
   }).fail(function() {
@@ -861,7 +911,6 @@ function populateCodesForRow(tr, data) {
       tr.addClass("bib_supp");
     }
     tr.addClass("bib_check");
-    //updateRowStat(tr);
 
     if ((getValue(data["holdingLinkData"], "suppress_from_publishing") == "true")) {
       $("tr[holding_id=" + data["holding_id"] + "] td.hold_supp")
@@ -869,7 +918,6 @@ function populateCodesForRow(tr, data) {
       tr.addClass("hold_supp");
     }
     tr.addClass("hold_check");
-    updateRowStat(tr);
 }
 
 /*
