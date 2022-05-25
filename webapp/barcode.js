@@ -479,7 +479,7 @@ function refreshTableRow(tr) {
   let barcode = tr.attr("barcode");
   let barcodes = [];
   barcodes.push(barcode);
-  processCodesMultiple(barcodes, false);
+  processCodesMultiple(barcodes, true);
 }
 
 //Refresh table row
@@ -820,6 +820,13 @@ function processCodesMultiple(barcodes, show) {
   for (let i=0; i<barcodes.length; i++) {
     if (i != 0) url = url + '&';
     url = url + 'item_barcode[]=' + barcodes[i];
+
+    var tr = $("#restable tr[barcode="+barcodes[i]+"]");
+    if (tr.length != 1) {
+      console.error('Error: barcode (' + barcodes[i] + ') not found in table');
+    } else {
+      tr.removeClass("new").addClass("processing");
+    }
   }
   // console.log('fetching URL = ' + url);
 

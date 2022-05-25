@@ -9,6 +9,7 @@ tr.current td, tr.current th {
 }
 tr.processing td, tr.processing button, tr.processing th {
   font-weight: bold;
+  color: green;
 }
 #gsheetdiv a {
   border: thin solid red;
