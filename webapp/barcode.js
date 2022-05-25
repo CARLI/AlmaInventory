@@ -166,7 +166,7 @@ function initDialogs() {
             }
             barcodes.push(codeArr[i]);
           }
-          addBarcodes(barcodes);
+          addBarcodes(barcodes, true);
         });
       },
       "Cancel" : function() {
@@ -474,7 +474,12 @@ function delrow(cell) {
 function refreshTableRow(tr) {
   $("tr.current").removeClass("current");
   tr.removeClass(STATUSES.join(" ")).addClass("new current");
-  processCodes(true);
+  //processCodes(true);
+
+  let barcode = tr.attr("barcode");
+  let barcodes = [];
+  barcodes.push(barcode);
+  processCodesMultiple(barcodes, false);
 }
 
 //Refresh table row
@@ -500,10 +505,13 @@ function addCurrentBarcode() {
 function addBarcode(barcode, show) {
   if (barcode == null || barcode == "") return;
   addBarcodeRow(barcode);
-  processCodes(show);
+  //processCodes(show);
+  let barcodes = [];
+  barcodes.push(barcode);
+  processCodesMultiple(barcodes, show);
 }
 
-function addBarcodes(barcodes) {
+function addBarcodes(barcodes, show) {
   const chunkSize = 10;
   for (let i = 0; i < barcodes.length; i += chunkSize) {
     const chunk = barcodes.slice(i, i + chunkSize);
@@ -511,7 +519,7 @@ function addBarcodes(barcodes) {
     for (b of chunk) {
       addBarcodeRow(b);
     }
-    processCodesMultiple(chunk);
+    processCodesMultiple(chunk, show);
   }
 }
 
@@ -607,6 +615,7 @@ function autosave() {
  *   status_msg - String - Status details (or null to leave unchanged)
  *   show       - boolean - show the status dialog
  */
+/******
 function setRowStatus(tr, status, status_msg, show) {
   tr.find("td.status").text(status);
   tr.removeClass("processing");
@@ -620,6 +629,7 @@ function setRowStatus(tr, status, status_msg, show) {
   }
   if (show) barcodeDialog();
 }
+*****/
 
 // slimmed-down version used by processCodesMultiple
 function setRowStatusOnly(tr, status, status_msg, show) {
@@ -631,9 +641,10 @@ function setRowStatusOnly(tr, status, status_msg, show) {
   if ($("#lastbarcode").text() == tr.attr("barcode")) {
     $("#laststatus").text(status).removeClass().addClass(status);
   }
+  if (show) barcodeDialog();
 }
 
-
+/*****
 function updateRowStat(tr) {
   if (!(tr.hasClass("bib_check") && tr.hasClass("hold_check"))) {
     //wait for the status to be set on the other field
@@ -653,7 +664,7 @@ function updateRowStat(tr) {
   }
   setRowStatus(tr, stat, statmsg, false);
 }
-
+******/
 
 // slimmed-down version used by processCodesMultiple
 function updateRowStatOnly(tr) {
@@ -803,7 +814,7 @@ function parseResponse(barcode, json) {
   return resdata;
 }
 
-function processCodesMultiple(barcodes) {
+function processCodesMultiple(barcodes, show) {
   //Call the web service to get data for the barcodes
   var url = 'redirect_items.js?';
   for (let i=0; i<barcodes.length; i++) {
@@ -813,10 +824,11 @@ function processCodesMultiple(barcodes) {
   // console.log('fetching URL = ' + url);
 
   $.getJSON(url, function(data){
-    for (let rawdata of data) {
-      // console.log(JSON.stringify(rawdata));
+    for (let j=0; j<data.length; j++) {
+      let rawdata = data[j];
+      //console.log(JSON.stringify(rawdata));
       var barcode = rawdata["barcode"];
-      // console.log('processing returned data for barcode = ' + barcode);
+      console.log('processing returned data for barcode = ' + barcode);
       var tr = $("#restable tr[barcode="+barcode+"]");
       if (tr.length != 1) {
         console.error('Error: barcode (' + barcode + ') not found in table');
@@ -827,14 +839,15 @@ function processCodesMultiple(barcodes) {
         continue;
       }
       tr.removeClass("new").addClass("processing");
-      var data = parseResponse(barcode, rawdata);
+      var data2 = parseResponse(barcode, rawdata);
       var resbarcode = data["barcode"];
-      data["bibLinkData"] = rawdata["bibLinkData"];
-      data["holdingLinkData"] = rawdata["holdingLinkData"];
-      populateCodesForRow(tr, data);
+      data2["bibLinkData"] = rawdata["bibLinkData"];
+      data2["holdingLinkData"] = rawdata["holdingLinkData"];
+      populateCodesForRow(tr, data2);
       updateRowStatOnly(tr);
       setLcSortStat(tr);
-      setRowStatusOnly(tr, tr.find("td.status").text(), null, false);
+      setRowStatusOnly(tr, tr.find("td.status").text(), null, j==data.length-1 ? show : !show);
+      console.log('FINISHED processing returned data for barcode = ' + barcode);
     }
 
   }).fail(function() {
@@ -858,6 +871,7 @@ function processCodesMultiple(barcodes) {
  * (5) Remove status of "processing"
  * (6) Set status to the status from the web service
  */
+/********
 function processCodes(show) {
   if ($("#restable tr.processing").length > 0) return;
   var tr = $("#restable tr.new:last");
@@ -879,7 +893,7 @@ function processCodes(show) {
     var resbarcode = data["barcode"];
     var tr = $("#restable tr[barcode="+resbarcode+"]");
     if ("exception" in rawdata[0]) {
-      setRowStatusOnly(tr, STAT_FAIL, "Connection Error", false);
+      setRowStatus(tr, STAT_FAIL, "Connection Error", false);
       return;
     }
     data["bibLinkData"] = rawdata[0]["bibLinkData"];
@@ -892,6 +906,7 @@ function processCodes(show) {
     setRowStatus(tr, STAT_FAIL, "Connection Error", show);
   });
 }
+******/
 
 function populateCodesForRow(tr, data) {
     for(key in data) {
