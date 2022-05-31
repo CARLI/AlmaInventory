@@ -1,8 +1,12 @@
 html
   head
-    title Select Your Institution
+    title Alma Interactive Inventory Scanning Tool
   body
-    h2 Please select your institution
+    h2 Alma Interactive Inventory Scanning Tool
+
+    h4 CARLI provides this tool for I-Share Libraries. Please see #[a(href=`https://www.carli.illinois.edu/products-services/i-share/external-system/GeorgetownInventory`) CARLI’s documentation page] on this tool, and contact #[a(href=`mailto:support@carli.illinois.edu`) CARLI Support] with any questions.
+
+    h4 Please select your institution
 
     each org in orgs
       a(href='/org/' + org.name + '/') #{org.desc}
