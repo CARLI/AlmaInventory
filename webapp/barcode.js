@@ -638,6 +638,7 @@ function setRowStatusOnly(tr, status, status_msg, show) {
   tr.addClass(status);
   if (status_msg != null) tr.find("td.status_msg").text(status_msg);
   tr.addClass(status);
+  autosave();
   if ($("#lastbarcode").text() == tr.attr("barcode")) {
     $("#laststatus").text(status).removeClass().addClass(status);
   }
