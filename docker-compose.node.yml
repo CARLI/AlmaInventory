@@ -2,7 +2,7 @@ version: "3.3"
 
 services:
   alma-inventory:
-    image: cedelis/alma-inventory-node:0.2
+    image: cedelis/alma-inventory-node-fast:0.2
     ports:
       - 80:80
     volumes:

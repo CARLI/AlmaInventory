@@ -6,13 +6,18 @@ const fs = require('fs');
 const ini = require('ini');
 const https = require('https');
 const axios = require('axios');
+const axiosThrottle =require('axios-request-throttle');
+
 const almaApi = axios.create({
-  //10 sec timeout
-  timeout: 10000,
+  //30 sec timeout
+  timeout: 30000,
 
   //keepAlive pools and reuses TCP connections, so it's faster
   httpsAgent: new https.Agent({ keepAlive: true }),
 });
+
+axiosThrottle.use(almaApi, { requestsPerSecond: 20 });
+
 
 global.orgs = loadOrgs();
 
@@ -87,7 +92,7 @@ app.get('/org/:org/redirect.js*', async (req, res) => {
     qs[k] = req.query[k];
   }
   try {
-    let ret = await axios.get(req.query.apipath,
+    let ret = await almaApi.get(req.query.apipath,
       {
         params: qs,
         headers: {
@@ -113,9 +118,10 @@ app.get('/org/:org/redirect_items.js*', async (req, res) => {
   }
 
   let retData = [];
-    // console.log('received barcodes: ' + req.query.item_barcode);
-    for (let barcode of req.query.item_barcode) {
-      console.log('processing barcode: ' + barcode);
+  let barcodes = req.query.item_barcode;
+  console.log('received barcodes: ' + barcodes);
+  for (let barcode of req.query.item_barcode) {
+      console.log('processing barcode: ' + barcode + ' from [' + barcodes + ']');
       let data = {};
       try {
         let ret = await almaApi.get(API_SERVICE+'items?item_barcode='+barcode,
@@ -178,8 +184,9 @@ console.log("Adding EXCEPTION barcode " + barcode + " to return Data");
       }
 console.log("Adding barcode " + barcode + " to return Data");
       retData.push(data);
-    }
+  }
 
+console.log('******returning [' + barcodes + ']');
     res.json(retData);
 });
 
@@ -208,5 +215,13 @@ app.get('/*', async (req, res) => {
   res.render('select', { orgs: orgs });
 });
 
+app.timeout = 700000; // longer than load balancer timeout of 600sec
 app.listen(PORT, HOST);
 console.log(`Running on http://${HOST}:${PORT}`);
+
+// Getting default timeout value
+// by using timeout api
+const v = app.timeout;
+ 
+// Display the Timeout value
+console.log('Default time out value :- ' + v);
