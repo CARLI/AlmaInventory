@@ -166,7 +166,7 @@ function initDialogs() {
             }
             barcodes.push(codeArr[i]);
           }
-          addBarcodes(barcodes, true);
+          addBarcodes(barcodes, false);
         });
       },
       "Cancel" : function() {
@@ -511,15 +511,16 @@ function addBarcode(barcode, show) {
   processCodesMultiple(barcodes, show);
 }
 
-function addBarcodes(barcodes, show) {
+async function addBarcodes(barcodes, show) {
+  for (let i = 0; i < barcodes.length; i++) {
+    addBarcodeRow(barcodes[i]);
+  }
+
   const chunkSize = 10;
-  for (let i = 0; i < barcodes.length; i += chunkSize) {
+  for (i = 0; i < barcodes.length; i += chunkSize) {
     const chunk = barcodes.slice(i, i + chunkSize);
     //console.log('processing chunk:' + chunk);
-    for (b of chunk) {
-      addBarcodeRow(b);
-    }
-    processCodesMultiple(chunk, show);
+    await processCodesMultiple(chunk, show);
   }
 }
 
@@ -815,7 +816,7 @@ function parseResponse(barcode, json) {
   return resdata;
 }
 
-function processCodesMultiple(barcodes, show) {
+async function processCodesMultiple(barcodes, show) {
   //Call the web service to get data for the barcodes
   var url = 'redirect_items.js?';
   for (let i=0; i<barcodes.length; i++) {
@@ -831,40 +832,42 @@ function processCodesMultiple(barcodes, show) {
   }
   // console.log('fetching URL = ' + url);
 
-  $.getJSON(url, function(data){
-    for (let j=0; j<data.length; j++) {
-      let rawdata = data[j];
-      //console.log(JSON.stringify(rawdata));
-      var barcode = rawdata["barcode"];
-      console.log('processing returned data for barcode = ' + barcode);
-      var tr = $("#restable tr[barcode="+barcode+"]");
-      if (tr.length != 1) {
-        console.error('Error: barcode (' + barcode + ') not found in table');
-        continue;
+  try {
+    await $.getJSON(url, function(data){
+      for (let j=0; j<data.length; j++) {
+        let rawdata = data[j];
+        //console.log(JSON.stringify(rawdata));
+        var barcode = rawdata["barcode"];
+        console.log('processing returned data for barcode = ' + barcode);
+        var tr = $("#restable tr[barcode="+barcode+"]");
+        if (tr.length != 1) {
+          console.error('Error: barcode (' + barcode + ') not found in table');
+          continue;
+        }
+        if ("exception" in rawdata) {
+          setRowStatusOnly(tr, STAT_FAIL, "Connection Error", false);
+          continue;
+        }
+        //tr.removeClass("new").addClass("processing");
+        var data2 = parseResponse(barcode, rawdata);
+        var resbarcode = data["barcode"];
+        data2["bibLinkData"] = rawdata["bibLinkData"];
+        data2["holdingLinkData"] = rawdata["holdingLinkData"];
+        populateCodesForRow(tr, data2);
+        updateRowStatOnly(tr);
+        setLcSortStat(tr);
+        setRowStatusOnly(tr, tr.find("td.status").text(), null, (show ? j==data.length-1 : false));
+        console.log('FINISHED processing returned data for barcode = ' + barcode);
+        console.log('FINISHED processing returned data for barcode = ' + barcode + ' show = ' + (show ? j==data.length-1 : false));
       }
-      if ("exception" in rawdata) {
-        setRowStatusOnly(tr, STAT_FAIL, "Connection Error", false);
-        continue;
-      }
-      tr.removeClass("new").addClass("processing");
-      var data2 = parseResponse(barcode, rawdata);
-      var resbarcode = data["barcode"];
-      data2["bibLinkData"] = rawdata["bibLinkData"];
-      data2["holdingLinkData"] = rawdata["holdingLinkData"];
-      populateCodesForRow(tr, data2);
-      updateRowStatOnly(tr);
-      setLcSortStat(tr);
-      setRowStatusOnly(tr, tr.find("td.status").text(), null, j==data.length-1 ? show : !show);
-      console.log('FINISHED processing returned data for barcode = ' + barcode);
-    }
-
-  }).fail(function() {
+    });
+  } catch (error) {
     console.log('FAILED: fetching URL = ' + url);
     for (b of barcodes) {
       var tr = $("#restable tr[barcode="+b+"]");
       setRowStatusOnly(tr, STAT_FAIL, "Connection Error", false);
     }
-  });
+  }
 
 }
 

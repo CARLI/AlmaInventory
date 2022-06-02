@@ -215,7 +215,7 @@ app.get('/*', async (req, res) => {
   res.render('select', { orgs: orgs });
 });
 
-app.timeout = 700000; // longer than load balancer timeout of 600sec
+app.timeout = 600000; // load balancer timeout of 600sec
 app.listen(PORT, HOST);
 console.log(`Running on http://${HOST}:${PORT}`);
 
