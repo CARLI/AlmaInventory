@@ -858,7 +858,6 @@ async function processCodesMultiple(barcodes, show) {
         setLcSortStat(tr);
         setRowStatusOnly(tr, tr.find("td.status").text(), null, (show ? j==data.length-1 : false));
         console.log('FINISHED processing returned data for barcode = ' + barcode);
-        console.log('FINISHED processing returned data for barcode = ' + barcode + ' show = ' + (show ? j==data.length-1 : false));
       }
     });
   } catch (error) {
